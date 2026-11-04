@@ -1,72 +1,55 @@
-name: Build APK
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+android {
+    namespace = "com.waleed.dexlab"
+    compileSdk = 34
+    defaultConfig {
+        applicationId = "com.waleed.dexlab"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+        resourceConfigurations += listOf("ar", "en")
+    }
+    buildTypes { release { isMinifyEnabled = false } }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
+    }
+    kotlinOptions { jvmTarget = "17" }
+    lint { abortOnError = false; checkReleaseBuilds = false }
+    buildFeatures { compose = true }
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+    packaging {
+        // smali 2.5.2 and jadx's smali 3.x both ship these files -> keep the first one
+        resources.pickFirsts += setOf("baksmali.properties", "smali.properties", "dexlib2.properties", "util.properties", "*.properties")
+        resources.excludes += setOf("META-INF/versions/**", "META-INF/INDEX.LIST", "META-INF/*.version", "**/module-info.class", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module", "META-INF/{AL2.0,LGPL2.1}")
+    }
+}
+configurations.all {
+    // guava (pulled by smali) already contains ListenableFuture -> avoid "Duplicate class" error
+    exclude(group = "com.google.guava", module = "listenablefuture")
+}
 
-on:
-  push:
-    branches: [main, master]
-    tags: ["v*"]
-  pull_request:
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      # لو الزيب اترفع كما هو، نفكه هنا
-      - name: Unzip project if uploaded as zip
-        run: |
-          if [ -z "$(find . -name settings.gradle.kts -not -path './.git/*' | head -n 1)" ]; then
-            z=$(find . -name '*.zip' -not -path './.git/*' | head -n 1)
-            if [ -n "$z" ]; then echo "Unzipping $z"; unzip -o -q "$z" -d unzipped_project; fi
-          fi
-
-      # يلاقي مكان المشروع تلقائياً (على الجذر أو داخل مجلد فرعي)
-      - name: Locate Gradle project
-        id: loc
-        run: |
-          f=$(find . -name settings.gradle.kts -not -path "*/build/*" | head -n 1)
-          if [ -z "$f" ]; then echo "settings.gradle.kts not found"; exit 1; fi
-          echo "dir=$(dirname "$f")" >> "$GITHUB_OUTPUT"
-          echo "Project dir: $(dirname "$f")"
-
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.7
-
-      - name: Build debug APK
-        working-directory: ${{ steps.loc.outputs.dir }}
-        shell: bash
-        run: |
-          set -o pipefail
-          gradle assembleDebug --console=plain 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
-
-      - name: Show errors in summary
-        if: failure()
-        run: |
-          {
-            echo "### Build errors"
-            echo '```'
-            grep -nE "^e: |error:|What went wrong|Execution failed|Duplicate class|Could not " -A4 build.log | head -80
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: WaleedDexLab-debug
-          path: ${{ steps.loc.outputs.dir }}/app/build/outputs/apk/debug/*.apk
-
-      - name: Attach APK to Release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ steps.loc.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+dependencies {
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("com.android.tools.build:apksig:8.5.2")
+    implementation("org.smali:smali:2.5.2")
+    implementation("org.smali:baksmali:2.5.2")
+    // Java decompiler (experimental on Android)
+    implementation("io.github.skylot:jadx-core:1.5.0")
+    implementation("io.github.skylot:jadx-dex-input:1.5.0")
+    implementation("org.slf4j:slf4j-api:2.0.13")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+}
