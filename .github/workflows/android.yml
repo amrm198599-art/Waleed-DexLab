@@ -32,8 +32,17 @@ jobs:
         id: loc
         run: |
           f=$(find . -name settings.gradle.kts -not -path "*/build/*" | head -n 1)
-          if [ -z "$f" ]; then echo "settings.gradle.kts not found"; ls -R | head -50; exit 1; fi
+          if [ -z "$f" ]; then echo "settings.gradle.kts not found"; exit 1; fi
           echo "dir=$(dirname "$f")" >> "$GITHUB_OUTPUT"
+          echo "Project dir: $(dirname "$f")"
+
+      - name: Patch Gradle packaging
+        working-directory: ${{ steps.loc.outputs.dir }}
+        run: |
+          if ! grep -q pickFirsts app/build.gradle.kts; then
+            sed -i 's|^    packaging {|    packaging {\n        resources.pickFirsts += setOf("baksmali.properties", "smali.properties", "dexlib2.properties", "util.properties", "*.properties")|' app/build.gradle.kts
+          fi
+          grep -n -A2 "packaging {" app/build.gradle.kts
 
       - uses: gradle/actions/setup-gradle@v4
         with:
